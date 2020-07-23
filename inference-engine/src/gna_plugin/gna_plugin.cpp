@@ -728,11 +728,12 @@ void GNAPlugin::LoadNetwork(ICNNNetwork & _network) {
                 // input orientation might be already initialized, thus verify that it matches
                 if (!inputsDesc->orientation_in.count(inputName)) {
                     inputsDesc->orientation_in[inputName] = dnnLayer->orientation_in;
-                } else {
-                    if (inputsDesc->orientation_in[inputName] != dnnLayer->orientation_in) {
-                        THROW_GNA_EXCEPTION << "orientation for input layer: " << inputName << "cannot be calculated";
-                    }
                 }
+//                else {
+//                    if (inputsDesc->orientation_in[inputName] != dnnLayer->orientation_in) {
+//                        THROW_GNA_EXCEPTION << "orientation for input layer: " << inputName << "cannot be calculated";
+//                    }
+//                }
             }
         }
     } else {
