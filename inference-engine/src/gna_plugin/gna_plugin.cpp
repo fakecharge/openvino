@@ -555,15 +555,15 @@ void GNAPlugin::LoadNetwork(ICNNNetwork & _network) {
             auto irLayerAvatar = std::find_if(
                 graphCompiler.dnnComponents.components.begin(),
                 graphCompiler.dnnComponents.components.end(),
-                [&layer](std::pair<std::string, intel_dnn_component_t> & value) {
-                    return value.first == layer->name;
+                [&layer](const backend::DnnComponents::storage_type::value_type & value) {
+                    return value.name == layer->name;
             });
 
             gnalog() << "[UFS] from : "<< outPort.first <<" reached: " << layer->name << "\n";
 
             // probing gna_primitives
             if (irLayerAvatar != graphCompiler.dnnComponents.components.end()) {
-                initOutput(portId, irLayerAvatar->second, layer);
+                initOutput(portId, irLayerAvatar->dnnComponent, layer);
                 stopSearching = true;
             }
 
@@ -620,7 +620,7 @@ void GNAPlugin::LoadNetwork(ICNNNetwork & _network) {
 
     // TODO: this copy is unneeded; in fact, we can directly create gna structs from list
     for (auto &element : graphCompiler.dnnComponents.components) {
-        dnn->component.push_back(element.second);
+        dnn->component.push_back(element.dnnComponent);
     }
 
     // in fp32 mode last PWL cannot be computed without that

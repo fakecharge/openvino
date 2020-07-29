@@ -1750,7 +1750,8 @@ void GNAGraphCompiler::CreateLayerPrimitive(CNNLayerPtr layer) {
         {{"Reshape"}, SKIP},  // TODO: handled not in GNA but rather in GNA plugin
         {{"Squeeze"}, SKIP},  // TODO: handled not in GNA but rather in GNA plugin
         {{"Crop"}, CREATE(CropPrimitive)},
-        {{"Copy"}, CREATE(CopyPrimitive)},
+        {{CopyLayerName}, CREATE(CopyPrimitive)},
+        {{DelayedCopyLayerName}, CREATE(CopyPrimitive)},
         {{"TensorIterator"}, SKIP},
         {{"LSTMCell"}, SKIP}
     };
@@ -2043,10 +2044,9 @@ GNAPluginNS::ConnectionDetails GNAGraphCompiler::connectInput(CNNLayerPtr layer,
         auto& memoryLayer = prevMemoryLayer->second;
         if (memoryLayer.reserved_size == 0) {
             auto memorySize = InferenceEngine::details::product(memoryLayer.getDims()) * memoryLayer.elementSizeBytes();
-
+            memorySize = std::max(memorySize, num_data_bytes_in);
             // negative offset used for  indicate that memory layer should be bound to given buffer
             if (offset >= 0) {
-                memorySize = std::max(memorySize, num_data_bytes_in);
                 gnamem->reserve_ptr(&memoryLayer.gna_ptr, ALIGN64(memorySize), 64);
                 gnamem->bind_ptr(ptr, &memoryLayer.gna_ptr, offset);
             } else {
