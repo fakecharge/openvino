@@ -31,7 +31,7 @@ namespace LayerTestsDefinitions {
         auto params = ngraph::builder::makeParams(ngPrc, { {1, 336} , {1, 336}});
 
         std::vector<size_t> outFormShapes1 = { 1, 1, 168, 2 };
-        std::vector<size_t> outFormShapes2 = { 1, 2, 1, 168 };
+        std::vector<size_t> outFormShapes2 = { 1, 336, 1, 1 };
         auto pattern1 = std::make_shared<ngraph::opset1::Constant>(ngraph::element::Type_t::i64, ngraph::Shape{ 4 }, outFormShapes1);
         auto reshape1 = std::make_shared<ngraph::opset1::Reshape>(params[0], pattern1, false);
 
@@ -47,13 +47,15 @@ namespace LayerTestsDefinitions {
         auto permute2 = std::make_shared<ngraph::opset1::Transpose>(conv1,
                                                                     ngraph::opset1::Constant::create(ngraph::element::i64, ngraph::Shape{ 4 }, { 0, 2, 3, 1 }));
 
-        auto conv2 = ngraph::builder::makeConvolution(reshape2, ngPrc, { 1, 8 }, { 1, 1 }, { 0, 0 }, { 0, 0 }, { 1, 1 },
-                                                      ngraph::op::PadType::VALID, 12);
+        auto conv2 = ngraph::builder::makeConvolution(reshape2, ngPrc, { 1, 1 }, { 1, 1 }, { 0, 0 }, { 0, 0 }, { 1, 1 },
+                                                      ngraph::op::PadType::VALID, 336);
 
         std::vector<size_t> outFormShapes3 = { 1, 1932 };
+        std::vector<size_t> outFormShapes4 = { 1, 336 };
         auto pattern3 = std::make_shared<ngraph::opset1::Constant>(ngraph::element::Type_t::i64, ngraph::Shape{ 2 }, outFormShapes3);
+        auto pattern4 = std::make_shared<ngraph::opset1::Constant>(ngraph::element::Type_t::i64, ngraph::Shape{ 2 }, outFormShapes4);
         auto reshape3 = std::make_shared<ngraph::opset1::Reshape>(permute2, pattern3, false);
-        auto reshape4 = std::make_shared<ngraph::opset1::Reshape>(conv2, pattern3, false);
+        auto reshape4 = std::make_shared<ngraph::opset1::Reshape>(conv2, pattern4, false);
         ngraph::ResultVector results{ std::make_shared<ngraph::opset1::Result>(reshape3),
                                       std::make_shared<ngraph::opset1::Result>(reshape4)};
         function = std::make_shared<ngraph::Function>(results, params, "RemovePermutationPass");

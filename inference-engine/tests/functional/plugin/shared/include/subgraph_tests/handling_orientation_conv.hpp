@@ -28,5 +28,4 @@ public:
 protected:
     void SetUp() override;
 };
-
 }  // namespace LayerTestsDefinitions
