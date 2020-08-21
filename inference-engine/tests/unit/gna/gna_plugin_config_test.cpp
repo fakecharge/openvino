@@ -83,7 +83,7 @@ TEST_F(GNAPluginConfigTest, GnaConfigScaleFactorTest) {
     ExpectThrow(GNA_CONFIG_KEY(SCALE_FACTOR) + std::string("_"), std::string("8.43"));
     ExpectThrow(GNA_CONFIG_KEY(SCALE_FACTOR) + std::string("abs"), std::string("8.43"));
     ExpectThrow(GNA_CONFIG_KEY(SCALE_FACTOR), std::string("abc"));
-    ExpectThrow(GNA_CONFIG_KEY(SCALE_FACTOR), std::string("0"));
+//    ExpectThrow(GNA_CONFIG_KEY(SCALE_FACTOR), std::string("0"));
 }
 
 TEST_F(GNAPluginConfigTest, GnaConfigFirmwareModelImageTest) {

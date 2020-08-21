@@ -81,9 +81,6 @@ void Config::UpdateFromMap(const std::map<std::string, std::string>& config) {
                 }
             }
             auto scale_factor = InferenceEngine::CNNLayer::ie_parse_float(value);
-            if (fp32eq(scale_factor, 0.0f)) {
-                THROW_GNA_EXCEPTION << "input scale factor of 0.0f not supported";
-            }
             // missing scale factors are set to be 1.0f
             if (inputScaleFactors.size() <= input_index) {
                 inputScaleFactors.resize(input_index + 1, 1.f);

@@ -631,6 +631,13 @@ int main(int argc, char *argv[]) {
             }
         } else {
             // "static" quantization with calculated scale factor
+            std::vector<std::string> input_uses, all_inputs;
+            if (!FLAGS_iname.empty()) {
+                input_uses = ParseBlobName(FLAGS_iname);
+                for ( auto input_net : network.getInputsInfo() ) {
+                    all_inputs.push_back(input_net.first);
+                }
+            }
             for (size_t i = 0; i < numInputArkFiles; i++) {
                 auto inputArkName = inputArkFiles[i].c_str();
                 std::string name;
@@ -645,8 +652,18 @@ int main(int argc, char *argv[]) {
                                   &numFrames,
                                   &numFrameElements,
                                   &numBytesPerElement);
-                auto floatScaleFactor =
-                        ScaleFactorForQuantization(ptrFeatures.data(), MAX_VAL_2B_FEAT, numFrames * numFrameElements);
+                float floatScaleFactor;
+                if (!FLAGS_iname.empty() && (std::find(input_uses.begin(), input_uses.end(), all_inputs[i]) == input_uses.end())) {
+                    // If the input isn't used, its scale factor changes to 0
+                    floatScaleFactor = 0.0f;
+                    if (numFrames > 1) {
+                        throw std::logic_error("Should be 1 frame for infer");
+                    }
+                } else {
+                    floatScaleFactor =
+                            ScaleFactorForQuantization(ptrFeatures.data(), MAX_VAL_2B_FEAT,
+                                                       numFrames * numFrameElements);
+                }
                 slog::info << "Using scale factor of " << floatScaleFactor << " calculated from first utterance."
                            << slog::endl;
                 std::string scaleFactorConfigKey = GNA_CONFIG_KEY(SCALE_FACTOR) + std::string("_") + std::to_string(i);
@@ -680,31 +697,31 @@ int main(int argc, char *argv[]) {
         auto t0 = Time::now();
         std::vector<std::string> outputs;
         ExecutableNetwork executableNet;
-        if (!FLAGS_m.empty()) {
-            if (!FLAGS_oname.empty()) {
-                std::vector<std::string> outputs_names = ParseBlobName(FLAGS_oname);
-                std::vector<size_t> ports;
-                for (const std::string& outBlobName : outputs_names) {
-                    size_t pos_layer = outBlobName.rfind(":");
-                    outputs.push_back(outBlobName.substr(0, pos_layer));
-                    try {
-                        ports.push_back(std::stoi(outBlobName.substr(pos_layer + 1, outBlobName.length())));
-                    } catch (std::exception) {
-                        throw std::logic_error("Ports should have integer type");
-                    }
-                }
 
-                for (size_t i = 0; i < outputs.size(); i++) {
-                    network.addOutput(outputs[i], ports[i]);
+        if (!FLAGS_oname.empty()) {
+            std::vector<std::string> outputs_names = ParseBlobName(FLAGS_oname);
+            std::vector<size_t> ports;
+            for (const std::string& outBlobName : outputs_names) {
+                size_t pos_layer = outBlobName.rfind(":");
+                outputs.push_back(outBlobName.substr(0, pos_layer));
+                try {
+                    ports.push_back(std::stoi(outBlobName.substr(pos_layer + 1, outBlobName.length())));
+                } catch (std::exception) {
+                    throw std::logic_error("Ports should have integer type");
                 }
             }
+
+            for (size_t i = 0; i < outputs.size(); i++) {
+                network.addOutput(outputs[i], ports[i]);
+            }
+        }
+        if (!FLAGS_m.empty()) {
             slog::info << "Loading model to the device" << slog::endl;
             executableNet = ie.LoadNetwork(network, deviceStr, genericPluginConfig);
         } else {
             slog::info << "Importing model to the device" << slog::endl;
             executableNet = ie.ImportNetwork(FLAGS_rg.c_str(), deviceStr, genericPluginConfig);
         }
-
         ms loadTime = std::chrono::duration_cast<ms>(Time::now() - t0);
         slog::info << "Model loading time " << loadTime.count() << " ms" << slog::endl;
 
@@ -741,7 +758,7 @@ int main(int argc, char *argv[]) {
         std::vector<Blob::Ptr> ptrInputBlobs;
         if (!FLAGS_iname.empty()) {
             std::vector<std::string> string_input = ParseBlobName(FLAGS_iname);
-            for (std::string input : string_input) {
+            for (const std::string& input : string_input) {
                 Blob::Ptr blob = inferRequests.begin()->inferRequest.GetBlob(input);
                 if (!blob) {
                     std::string errMessage("No blob with name : " + input);
@@ -750,7 +767,7 @@ int main(int argc, char *argv[]) {
                 ptrInputBlobs.push_back(blob);
             }
         } else {
-            for (auto &input : cInputInfo) {
+            for (const auto& input : cInputInfo) {
                 ptrInputBlobs.push_back(inferRequests.begin()->inferRequest.GetBlob(input.first));
             }
         }
@@ -946,6 +963,13 @@ int main(int argc, char *argv[]) {
                             }
 
                             if (!FLAGS_r.empty()) {
+                                if (!FLAGS_oname.empty()) {
+                                    for (std::string output : outputs) {
+                                        newOutputInfo[output] = cOutputInfo[output];
+                                    }
+                                } else {
+                                    newOutputInfo = cOutputInfo;
+                                }
                                 Blob::Ptr outputBlob = inferRequest.inferRequest.GetBlob(newOutputInfo.rbegin()->first);
                                 MemoryBlob::CPtr moutput = as<MemoryBlob>(outputBlob);
                                 if (!moutput) {
@@ -977,19 +1001,36 @@ int main(int argc, char *argv[]) {
                         continue;
                     }
 
-                    for (size_t i = 0; i < numInputArkFiles; ++i) {
-                        MemoryBlob::Ptr minput = as<MemoryBlob>(ptrInputBlobs[i]);
-                        if (!minput) {
-                            slog::err << "We expect ptrInputBlobs[" << i << "] to be inherited from MemoryBlob, " <<
-                                "but by fact we were not able to cast input blob to MemoryBlob" << slog::endl;
-                            return 1;
-                        }
-                        // locked memory holder should be alive all time while access to its buffer happens
-                        auto minputHolder = minput->wmap();
+                    if (FLAGS_iname.empty()) {
+                        for (size_t i = 0; i < numInputArkFiles; ++i) {
+                            MemoryBlob::Ptr minput = as<MemoryBlob>(ptrInputBlobs[i]);
+                            if (!minput) {
+                                slog::err << "We expect ptrInputBlobs[" << i << "] to be inherited from MemoryBlob, " <<
+                                          "but by fact we were not able to cast input blob to MemoryBlob" << slog::endl;
+                                return 1;
+                            }
+                            // locked memory holder should be alive all time while access to its buffer happens
+                            auto minputHolder = minput->wmap();
 
-                        std::memcpy(minputHolder.as<void*>(),
-                                    inputFrame[i],
-                                    minput  ->byteSize());
+                            std::memcpy(minputHolder.as<void *>(),
+                                        inputFrame[i],
+                                        minput->byteSize());
+                        }
+                    } else {
+                        for (size_t i = 0; i < ptrInputBlobs.size(); i++) {
+                            MemoryBlob::Ptr minput = as<MemoryBlob>(ptrInputBlobs[i]);
+                            if (!minput) {
+                                slog::err << "We expect ptrInputBlobs[" << i << "] to be inherited from MemoryBlob, " <<
+                                          "but by fact we were not able to cast input blob to MemoryBlob" << slog::endl;
+                                return 1;
+                            }
+                            // locked memory holder should be alive all time while access to its buffer happens
+                            auto minputHolder = minput->wmap();
+
+                            std::memcpy(minputHolder.as<void *>(),
+                                        inputFrame[i],
+                                        minput->byteSize());
+                        }
                     }
 
                     int index = static_cast<int>(frameIndex) - (FLAGS_cw_l + FLAGS_cw_r);
